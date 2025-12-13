@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: iso_mw
+      POSTGRES_USER: iso_user
+      POSTGRES_PASSWORD: iso_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iso_user -d iso_mw"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://iso_user:iso_pass@postgres:5432/iso_mw
+      FLARE_RPC_URL: ${FLARE_RPC_URL:-https://coston2-api.flare.network/ext/C/rpc}
+      ANCHOR_CONTRACT_ADDR: ${ANCHOR_CONTRACT_ADDR}
+      ANCHOR_PRIVATE_KEY: ${ANCHOR_PRIVATE_KEY}
+      ANCHOR_ABI_PATH: contracts/EvidenceAnchor.abi.json
+      WEB_ORIGIN: http://localhost:8501
+      ARTIFACTS_DIR: artifacts
+      SERVICE_PRIVATE_KEY: ${SERVICE_PRIVATE_KEY:-.keys/service_sk.hex}
+      SERVICE_PUBLIC_KEY: ${SERVICE_PUBLIC_KEY:-.keys/service_pk.pem}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+volumes:
+  db-data:

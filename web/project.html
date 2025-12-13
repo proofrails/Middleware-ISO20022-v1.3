@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>My Project · ISO 20022 Middleware</title>
+  <link rel="stylesheet" href="/web/styles.css"/>
+</head>
+<body>
+  <header class="header">
+    <div class="brand"><div class="dot"></div><h1>ISO 20022 Middleware</h1></div>
+    <nav class="nav">
+      <a href="/web/index.html">Public</a>
+      <a href="/web/project.html">My Project</a>
+      <a href="/web/verify.html">Verify</a>
+      <a href="/web/statements.html">Statements</a>
+    </nav>
+  </header>
+  <div class="container">
+    <div class="banner small" id="banner">Loading project…</div>
+
+    <div class="card" id="no_key" style="display:none">
+      <h3>Project access required</h3>
+      <div class="small">No API key is configured in this browser. Go to the Public page and generate your project API key first, then return here.</div>
+      <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+        <a class="btn primary" href="/web/index.html">Go to Public page</a>
+      </div>
+    </div>
+
+    <div class="card" id="proj_card" style="display:none">
+      <h3>My Receipts</h3>
+      <div class="small" id="proj_meta">Project: -</div>
+      <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+        <button class="btn" id="refresh_btn">Refresh</button>
+        <button class="btn warn" id="rotate_btn">Rotate API key</button>
+      </div>
+      <div class="small" id="rotate_out" style="margin-top:8px;color:var(--muted)">-</div>
+      <div class="table-wrap" style="margin-top:12px">
+        <table class="table" id="tbl">
+          <thead>
+            <tr>
+              <th>Receipt</th>
+              <th>Status</th>
+              <th>Bundle Hash</th>
+              <th>Tx</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <footer>© ISO 20022 Middleware</footer>
+  </div>
+
+  <script src="/web/app.js"></script>
+  <script>
+    async function ensureProject(){
+      const banner = document.getElementById('banner');
+      const noKey = document.getElementById('no_key');
+      const projCard = document.getElementById('proj_card');
+      const rotateOut = document.getElementById('rotate_out');
+
+      // If no api_key in localStorage, short-circuit
+      const apiKey = localStorage.getItem('api_key');
+      if (!apiKey){
+        banner.textContent = 'No API key configured. Generate one on the Public page.';
+        noKey.style.display = 'block';
+        return null;
+      }
+
+      try{
+        const who = await getJSON('/v1/whoami');
+        if (!who || !who.project_id){
+          banner.textContent = 'API key invalid or revoked. Generate a new one on the Public page.';
+          noKey.style.display = 'block';
+          return null;
+        }
+        banner.textContent = 'Project view · showing receipts for project ' + who.project_id;
+        document.getElementById('proj_meta').textContent = 'Project: ' + who.project_id;
+        projCard.style.display = 'block';
+        return who.project_id;
+      }catch(e){
+        banner.textContent = 'Error loading project context.';
+        noKey.style.display = 'block';
+        return null;
+      }
+    }
+
+    function shortHash(h){ if(!h) return '-'; return h.slice(0,10)+'…'+h.slice(-6); }
+    function txLink(tx){ if(!tx) return '-'; return `<a class="mono" href="https://flare-explorer.flare.network/tx/${tx}" target="_blank" rel="noopener">${shortHash(tx)}</a>`; }
+
+    async function loadReceipts(){
+      const tbody = document.getElementById('rows');
+      tbody.innerHTML = '';
+      try{
+        const data = await getJSON('/v1/iso/receipts?limit=50');
+        for(const r of (data.items||[])){
+          const tr = document.createElement('tr');
+          const statusTag = r.status==='anchored' ? 'ok' : (r.status==='failed' ? 'fail' : 'pending');
+          tr.innerHTML = `
+            <td class="mono">${r.id}</td>
+            <td><span class="tag ${statusTag}">${r.status}</span></td>
+            <td class="mono small">${shortHash(r.bundle_hash)}</td>
+            <td>${txLink(r.flare_txid)}</td>
+            <td class="small">${r.created_at||'-'}</td>
+            <td><a class="btn" href="/web/receipt.html?rid=${r.id}">Open</a></td>
+          `;
+          tbody.appendChild(tr);
+        }
+        if(!(data.items||[]).length){
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td class="small" colspan="6">No receipts for this project yet.</td>';
+          tbody.appendChild(tr);
+        }
+      }catch(e){
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td class="small" colspan="6">Failed to load receipts: ' + (e && e.message || String(e)) + '</td>';
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function rotateKey(){
+      const out = document.getElementById('rotate_out');
+      out.textContent = 'Rotating key…';
+      try{
+        const res = await postJSON('/v1/api-keys/rotate', {});
+        if (res && res.api_key){
+          localStorage.setItem('api_key', res.api_key);
+          out.textContent = 'API key rotated. New key stored in this browser. Keep it safe.';
+          // Refresh banner/project info
+          renderBanner();
+        }else{
+          out.textContent = 'Rotation succeeded, but no api_key returned.';
+        }
+      }catch(e){
+        out.textContent = 'Rotation failed: ' + (e && e.message || String(e));
+      }
+    }
+
+    document.getElementById('refresh_btn').addEventListener('click', loadReceipts);
+    document.getElementById('rotate_btn').addEventListener('click', rotateKey);
+
+    (async () => {
+      const pid = await ensureProject();
+      if (pid){
+        await loadReceipts();
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Verify · ISO 20022 Middleware</title>
+  <link rel="stylesheet" href="/web/styles.css"/>
+</head>
+<body>
+  <header class="header">
+    <div class="brand"><div class="dot"></div><h1>ISO 20022 Middleware</h1></div>
+    <nav class="nav">
+      <a href="/web/index.html">Dashboard</a>
+      <a href="/web/verify.html">Verify</a>
+      <a href="/web/statements.html">Statements</a>
+    </nav>
+  </header>
+  <div class="container">
+    <div class="banner small">Loading network…</div>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>Verify Evidence</h3>
+        <div class="small muted" style="margin-bottom:8px;">Provide either a bundle URL or a bundle hash (0x + 64 hex), not both.</div>
+        <div class="split">
+          <div class="col">
+            <div class="label">Bundle URL</div>
+            <input id="bundle_url" placeholder="http(s)://.../files/{id}/evidence.zip"/>
+          </div>
+          <div class="col">
+            <div class="label">Bundle Hash</div>
+            <input id="bundle_hash" placeholder="0x..."/>
+          </div>
+        </div>
+        <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn primary" id="verify_btn">Verify</button>
+        </div>
+        <div id="out" class="small" style="margin-top:8px;color:var(--muted)">-</div>
+      </div>
+
+      <div class="card">
+        <h3>Result</h3>
+        <pre id="json" class="small mono" style="white-space:pre-wrap"></pre>
+      </div>
+    </div>
+
+    <footer>© ISO 20022 Middleware</footer>
+  </div>
+  <script src="/web/app.js"></script>
+  <script>
+    function validateXor(url, hash){
+      const u = (url||'').trim(); const h = (hash||'').trim();
+      if (!!u === !!h) throw new Error('Provide exactly one of bundle_url or bundle_hash');
+      if (h && !/^0x[0-9a-fA-F]{64}$/.test(h)) throw new Error('Invalid bundle_hash format');
+    }
+
+    async function doVerify(){
+      const url = document.getElementById('bundle_url').value;
+      const hash = document.getElementById('bundle_hash').value;
+      try{
+        validateXor(url, hash);
+        document.getElementById('verify_btn').disabled = true;
+        document.getElementById('out').textContent = 'Verifying…';
+        const body = hash ? { bundle_hash: hash.trim() } : { bundle_url: url.trim() };
+        const v = await postJSON('/v1/iso/verify', body);
+        document.getElementById('json').textContent = JSON.stringify(v, null, 2);
+        document.getElementById('out').textContent = `matches_onchain=${v.matches_onchain} | tx=${v.flare_txid||'-'} | errors=${(v.errors||[]).join(',')||'-'}`;
+      }catch(e){
+        document.getElementById('out').textContent = 'Verify failed: ' + (e && e.message || String(e));
+      }finally{
+        document.getElementById('verify_btn').disabled = false;
+      }
+    }
+
+    document.getElementById('verify_btn').addEventListener('click', doVerify);
+  </script>
+</body>
+</html>

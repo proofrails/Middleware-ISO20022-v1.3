@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Statements · ISO 20022 Middleware</title>
+  <link rel="stylesheet" href="/web/styles.css"/>
+</head>
+<body>
+  <header class="header">
+    <div class="brand"><div class="dot"></div><h1>ISO 20022 Middleware</h1></div>
+    <nav class="nav">
+      <a href="/web/index.html">Dashboard</a>
+      <a href="/web/verify.html">Verify</a>
+      <a href="/web/statements.html">Statements</a>
+    </nav>
+  </header>
+  <div class="container">
+    <div class="banner small">Loading network…</div>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>camt.053 Daily Statement</h3>
+        <div class="label">Date (YYYY-MM-DD)</div>
+        <input id="date053" placeholder="2025-01-01"/>
+        <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn primary" id="btn053">Generate camt.053</button>
+        </div>
+        <div id="out053" class="small" style="margin-top:8px;color:var(--muted)">-</div>
+      </div>
+
+      <div class="card">
+        <h3>camt.052 Intraday Report</h3>
+        <div class="split">
+          <div class="col">
+            <div class="label">Date (YYYY-MM-DD)</div>
+            <input id="date052" placeholder="2025-01-01"/>
+          </div>
+          <div class="col">
+            <div class="label">Window (HH:MM-HH:MM UTC)</div>
+            <input id="win052" placeholder="00:00-23:59"/>
+          </div>
+        </div>
+        <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn primary" id="btn052">Generate camt.052</button>
+        </div>
+        <div id="out052" class="small" style="margin-top:8px;color:var(--muted)">-</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>Downloads</h3>
+      <ul id="downloads" class="small"></ul>
+    </div>
+
+    <footer>© ISO 20022 Middleware</footer>
+  </div>
+  <script src="/web/app.js"></script>
+  <script>
+    function linkItem(url, text){
+      const li = document.createElement('li');
+      li.innerHTML = `<a href="${url}" target="_blank" rel="noopener">${text||url}</a>`;
+      return li;
+    }
+
+    async function gen053(){
+      const d = document.getElementById('date053').value.trim();
+      const out = document.getElementById('out053');
+      out.textContent = 'Generating…';
+      try{
+        const res = await postJSON('/v1/iso/statement/camt053', { date: d });
+        out.textContent = res.url || 'OK';
+        document.getElementById('downloads').appendChild(linkItem(res.url, 'camt.053'));
+      }catch(e){ out.textContent = 'Failed: ' + (e && e.message || String(e)); }
+    }
+
+    async function gen052(){
+      const d = document.getElementById('date052').value.trim();
+      const w = document.getElementById('win052').value.trim();
+      const out = document.getElementById('out052');
+      out.textContent = 'Generating…';
+      try{
+        const body = { date: d };
+        if (w) body.window = w;
+        const res = await postJSON('/v1/iso/statement/camt052', body);
+        out.textContent = res.url || 'OK';
+        document.getElementById('downloads').appendChild(linkItem(res.url, 'camt.052'));
+      }catch(e){ out.textContent = 'Failed: ' + (e && e.message || String(e)); }
+    }
+
+    document.getElementById('btn053').addEventListener('click', gen053);
+    document.getElementById('btn052').addEventListener('click', gen052);
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+pydantic-settings==2.5.2
+sqlalchemy==2.0.35
+alembic==1.13.2
+python-dotenv==1.0.1
+lxml==5.3.0
+xmlschema==3.3.2
+PyNaCl==1.5.0
+requests==2.32.3
+starlette==0.38.5
+types-requests==2.32.0.20240914
+
+# Added for anchoring (Python web3 path) and Postgres driver
+web3==6.20.1
+eth-account==0.12.3
+eth-utils==4.1.1
+hexbytes==1.2.1

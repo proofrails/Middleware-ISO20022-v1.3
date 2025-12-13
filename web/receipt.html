@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Receipt · ISO 20022 Middleware</title>
+  <link rel="stylesheet" href="/web/styles.css"/>
+</head>
+<body>
+  <header class="header">
+    <div class="brand"><div class="dot"></div><h1>ISO 20022 Middleware</h1></div>
+    <nav class="nav">
+      <a href="/web/index.html">Dashboard</a>
+      <a href="/web/verify.html">Verify</a>
+      <a href="/web/statements.html">Statements</a>
+    </nav>
+  </header>
+  <div class="container">
+    <div class="banner small">Loading network…</div>
+
+    <div class="split">
+      <div class="col">
+        <div class="card">
+          <h3>Receipt</h3>
+          <div id="kv" class="kv small"></div>
+          <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+            <a class="btn" id="xml_btn" href="#" target="_blank" rel="noopener">Open XML</a>
+            <a class="btn" id="bundle_btn" href="#" target="_blank" rel="noopener">Download bundle</a>
+            <button class="btn primary" id="verify_btn">Verify</button>
+          </div>
+          <div id="verify_out" class="small" style="margin-top:8px;color:var(--muted)">-</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card">
+          <h3>JSON</h3>
+          <pre class="small mono" id="json" style="white-space:pre-wrap"></pre>
+        </div>
+      </div>
+    </div>
+
+    <footer>© ISO 20022 Middleware</footer>
+  </div>
+  <script src="/web/app.js"></script>
+  <script>
+    const { rid } = qs();
+    if(!rid){ location.href = '/web/index.html'; }
+
+    function kvRow(k,v){ return `<div class="label">${k}</div><div class="value mono">${v||'-'}</div>`; }
+
+    async function load(){
+      const r = await getJSON(`/v1/iso/receipts/${rid}`);
+      const kv = document.getElementById('kv');
+      const statusTag = r.status==='anchored' ? 'ok' : (r.status==='failed' ? 'fail' : 'pending');
+      kv.innerHTML = `
+        ${kvRow('Receipt ID', r.id)}
+        ${kvRow('Status', `<span class=tag ${statusTag}>${r.status}</span>`)}
+        ${kvRow('Bundle Hash', r.bundle_hash)}
+        ${kvRow('Tx', r.flare_txid || '-')}
+        ${kvRow('Created', r.created_at)}
+        ${kvRow('Anchored at', r.anchored_at || '-')}
+      `;
+      document.getElementById('xml_btn').href = r.xml_url || '#';
+      document.getElementById('bundle_btn').href = r.bundle_url || '#';
+      document.getElementById('json').textContent = JSON.stringify(r, null, 2);
+    }
+
+    async function doVerify(){
+      try{
+        document.getElementById('verify_btn').disabled = true;
+        document.getElementById('verify_out').textContent = 'Verifying…';
+        const rec = await getJSON(`/v1/iso/receipts/${rid}`);
+        if(!rec.bundle_url) throw new Error('No bundle_url yet');
+        const v = await postJSON('/v1/iso/verify', { bundle_url: location.origin + rec.bundle_url });
+        document.getElementById('verify_out').textContent = `matches_onchain=${v.matches_onchain} | tx=${v.flare_txid||'-'} | errors=${(v.errors||[]).join(',')||'-'}`;
+        await load();
+      }catch(e){
+        document.getElementById('verify_out').textContent = 'Verify failed: ' + (e && e.message || String(e));
+      }finally{
+        document.getElementById('verify_btn').disabled = false;
+      }
+    }
+
+    document.getElementById('verify_btn').addEventListener('click', doVerify);
+    load();
+  </script>
+</body>
+</html>

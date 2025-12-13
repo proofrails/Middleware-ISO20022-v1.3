@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin · API Keys · ISO 20022 Middleware</title>
+  <link rel="stylesheet" href="/web/styles.css"/>
+</head>
+<body>
+  <header class="header">
+    <div class="brand"><div class="dot"></div><h1>ISO 20022 Middleware</h1></div>
+    <nav class="nav">
+      <a href="/web/index.html">Dashboard</a>
+      <a href="/web/verify.html">Verify</a>
+      <a href="/web/statements.html">Statements</a>
+      <a href="#" id="settings_link">Settings</a>
+    </nav>
+  </header>
+  <div class="container">
+    <div class="banner small">Admin – Use Settings to set Admin Token for this session.</div>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>Issue API Key</h3>
+        <div class="label">Project ID</div>
+        <input id="proj_id" placeholder="project-123"/>
+        <div class="label" style="margin-top:8px;">Label (optional)</div>
+        <input id="label" placeholder="capella-prod"/>
+        <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn primary" id="btn_issue">Generate Key</button>
+        </div>
+        <div id="issue_out" class="small" style="margin-top:8px;color:var(--muted)">-</div>
+        <div id="key_box" class="small mono" style="margin-top:8px;display:none"></div>
+      </div>
+
+      <div class="card">
+        <h3>List / Revoke Keys</h3>
+        <div class="label">Project ID</div>
+        <input id="proj_list" placeholder="project-123"/>
+        <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn" id="btn_list">List Keys</button>
+        </div>
+        <div id="list_out" class="small" style="margin-top:8px;color:var(--muted)">-</div>
+        <div id="list_box" class="small" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <footer>© ISO 20022 Middleware</footer>
+  </div>
+
+  <script src="/web/app.js"></script>
+  <script>
+    // settings link
+    document.getElementById('settings_link').addEventListener('click', (e)=>{ e.preventDefault(); openSettings(); });
+
+    async function issue(){
+      const project_id = document.getElementById('proj_id').value.trim();
+      const label = document.getElementById('label').value.trim();
+      const out = document.getElementById('issue_out');
+      const kb = document.getElementById('key_box');
+      out.textContent = 'Issuing…'; kb.style.display='none'; kb.textContent='';
+      try{
+        const res = await postJSON('/v1/admin/api-keys', { project_id, label }, { admin:true });
+        out.textContent = 'Key created. Copy and store it securely (shown once).';
+        kb.textContent = res.api_key; kb.style.display='block';
+      }catch(e){ out.textContent = 'Failed: ' + (e && e.message || String(e)); }
+    }
+
+    async function listKeys(){
+      const project_id = document.getElementById('proj_list').value.trim();
+      const out = document.getElementById('list_out');
+      const box = document.getElementById('list_box');
+      out.textContent = 'Loading…'; box.innerHTML='';
+      try{
+        const res = await getJSON('/v1/admin/api-keys?project_id=' + encodeURIComponent(project_id), { admin:true });
+        out.textContent = (res.items||[]).length + ' key(s)';
+        for(const r of (res.items||[])){
+          const row = document.createElement('div');
+          row.className='row';
+          row.style.gap='8px'; row.style.alignItems='center'; row.style.marginBottom='6px';
+          row.innerHTML = `
+            <span class="tag">${r.label || '(no label)'} · ${r.id}</span>
+            <span class="small muted">created ${r.created_at||'-'}</span>
+            <span class="tag ${r.revoked?'fail':'ok'}">${r.revoked?'revoked':'active'}</span>
+            <button class="btn danger" data-id="${r.id}">${r.revoked?'Revoked':'Revoke'}</button>
+          `;
+          const btn = row.querySelector('button');
+          btn.disabled = !!r.revoked;
+          btn.addEventListener('click', async ()=>{
+            try{
+              btn.disabled = true; btn.textContent='Revoking…';
+              await postJSON('/v1/admin/api-keys/' + encodeURIComponent(r.id) + '/revoke', {}, { admin:true });
+              btn.textContent='Revoked';
+            }catch(e){ btn.textContent='Error'; }
+          });
+          box.appendChild(row);
+        }
+      }catch(e){ out.textContent = 'Failed: ' + (e && e.message || String(e)); }
+    }
+
+    document.getElementById('btn_issue').addEventListener('click', issue);
+    document.getElementById('btn_list').addEventListener('click', listKeys);
+  </script>
+</body>
+</html>

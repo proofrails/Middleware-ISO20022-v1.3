@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info
+.eggs/
+
+# Virtual envs
+.venv/
+venv/
+
+# Environment files
+.env
+
+# Build artifacts and local keys
+artifacts/
+.keys/
+
+# ISO schemas (keep only README)
+schemas/*
+!schemas/README.md
+
+# Node (if present)
+node_modules/
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Docker overrides
+docker-compose.override.yml

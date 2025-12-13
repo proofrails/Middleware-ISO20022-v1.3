@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>ISO 20022 Middleware · Dashboard</title>
+  <link rel="stylesheet" href="/web/styles.css"/>
+</head>
+<body>
+  <header class="header">
+    <div class="brand"><div class="dot"></div><h1>ISO 20022 Middleware</h1></div>
+    <nav class="nav">
+      <a href="/web/index.html">Public</a>
+      <a href="/web/project.html">My Project</a>
+      <a href="/web/verify.html">Verify</a>
+      <a href="/web/statements.html">Statements</a>
+    </nav>
+  </header>
+  <div class="container">
+    <div class="banner small">Public view · anyone can browse recent receipts and verify bundles. Use the panel below to generate your own project API key.</div>
+
+    <div class="grid cols-2" style="margin-bottom:16px;align-items:flex-start">
+      <div class="card">
+        <h3>Get Your Project API Key</h3>
+        <div class="small muted" style="margin-bottom:8px;">Generate a new project_id and API key. The key will be shown once and stored in this browser only.</div>
+        <div class="label">Label (optional)</div>
+        <input id="pub_label" placeholder="capella-prod"/>
+        <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn primary" id="btn_gen">Generate API key</button>
+        </div>
+        <div id="gen_out" class="small" style="margin-top:8px;color:var(--muted)">-</div>
+        <div id="gen_box" class="small mono" style="margin-top:8px;display:none"></div>
+      </div>
+
+      <div class="card">
+        <h3>How it works</h3>
+        <div class="small">
+          <ul style="padding-left:18px;margin:0">
+            <li>Click <b>Generate API key</b> to create a new project_id and key.</li>
+            <li>The key is stored in this browser (localStorage) and used for project-scoped views.</li>
+            <li>Use the <b>My Project</b> page to see only your receipts and rotate your key.</li>
+            <li>The <b>Verify</b> page works for any bundle URL or hash, with or without an API key.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h3>Recent Receipts</h3>
+        <button class="btn" id="refresh_btn">Refresh</button>
+      </div>
+      <div class="small muted" style="margin-bottom:8px;">Showing latest 50 by created_at</div>
+      <div class="table-wrap">
+        <table class="table" id="tbl">
+          <thead>
+            <tr>
+              <th>Receipt</th>
+              <th>Status</th>
+              <th>Bundle Hash</th>
+              <th>Tx</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <footer>© ISO 20022 Middleware</footer>
+  </div>
+
+  <script src="/web/app.js"></script>
+  <script>
+    function shortHash(h){ if(!h) return '-'; return h.slice(0,10)+'…'+h.slice(-6); }
+    function txLink(tx){ if(!tx) return '-'; return `<a class="mono" href="https://flare-explorer.flare.network/tx/${tx}" target="_blank" rel="noopener">${shortHash(tx)}</a>`; }
+
+    async function load(){
+      const data = await getJSON('/v1/iso/receipts?limit=50');
+      const tbody = document.getElementById('rows');
+      tbody.innerHTML = '';
+      for(const r of (data.items||[])){
+        const tr = document.createElement('tr');
+        const statusTag = r.status==='anchored' ? 'ok' : (r.status==='failed' ? 'fail' : 'pending');
+        tr.innerHTML = `
+          <td class="mono">${r.id}</td>
+          <td><span class="tag ${statusTag}">${r.status}</span></td>
+          <td class="mono small">${shortHash(r.bundle_hash)}</td>
+          <td>${txLink(r.flare_txid)}</td>
+          <td class="small">${r.created_at||'-'}</td>
+          <td><a class="btn" href="/web/receipt.html?rid=${r.id}">Open</a></td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function generateKey(){
+      const label = document.getElementById('pub_label').value.trim();
+      const out = document.getElementById('gen_out');
+      const box = document.getElementById('gen_box');
+      out.textContent = 'Generating…'; box.style.display='none'; box.textContent='';
+      try{
+        const body = label ? { label } : {};
+        const res = await postJSON('/v1/public/api-keys', body);
+        if (res && res.api_key){
+          localStorage.setItem('api_key', res.api_key);
+          out.textContent = 'API key created and stored in this browser.';
+          box.textContent = 'project_id=' + res.project_id + '\napi_key=' + res.api_key;
+          box.style.display = 'block';
+          // Update banner network/project info
+          renderBanner();
+        }else{
+          out.textContent = 'Created, but no api_key returned.';
+        }
+      }catch(e){
+        out.textContent = 'Failed: ' + (e && e.message || String(e));
+      }
+    }
+
+    document.getElementById('refresh_btn').addEventListener('click', load);
+    const genBtn = document.getElementById('btn_gen');
+    if (genBtn) genBtn.addEventListener('click', generateKey);
+    load();
+  </script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Receipt Widget</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --fg: #e6eefc;
+      --muted: #99a3b3;
+      --ok: #1db954;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --chip: #1f2937;
+      --border: #22304a;
+      --link: #60a5fa;
+    }
+    body { margin: 0; background: var(--bg); color: var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial; }
+    .wrap { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: #121826; }
+    .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--chip); border-radius: 999px; padding: 4px 8px; font-size: 12px; border: 1px solid var(--border); white-space: nowrap;}
+    .chip.ok { background: rgba(29,185,84,0.12); border-color: rgba(29,185,84,0.3); }
+    .chip.warn { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.3); }
+    .chip.err { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.3); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; }
+    a { color: var(--link); text-decoration: none; font-size: 12px; }
+    a:hover { text-decoration: underline; }
+    .spacer { flex: 1 1 auto; }
+    .links { display: inline-flex; gap: 8px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="row">
+      <span id="status" class="chip">loading…</span>
+      <span id="tx" class="mono">-</span>
+      <div class="spacer"></div>
+      <div class="links">
+        <a id="xml" href="#" target="_blank" rel="noopener" class="hidden">XML</a>
+        <a id="bundle" href="#" target="_blank" rel="noopener" class="hidden">Bundle</a>
+        <a id="open" href="#" target="_blank" rel="noopener">Open</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const qs = new URLSearchParams(location.search);
+      const rid = qs.get('rid');
+      const theme = (qs.get('theme') || 'dark').toLowerCase();
+
+      const el = {
+        status: document.getElementById('status'),
+        tx: document.getElementById('tx'),
+        xml: document.getElementById('xml'),
+        bundle: document.getElementById('bundle'),
+        open: document.getElementById('open'),
+      };
+
+      function setStatusChip(status) {
+        el.status.classList.remove('ok','warn','err');
+        let text = status;
+        if (status === 'anchored') { el.status.classList.add('ok'); text = 'anchored ✓'; }
+        else if (status === 'pending') { el.status.classList.add('warn'); text = 'pending…'; }
+        else if (status === 'failed') { el.status.classList.add('err'); text = 'failed ✗'; }
+        el.status.textContent = text;
+      }
+
+      function explorerLink(txid) {
+        if (!txid) return '-';
+        const base = 'https://coston2-explorer.flare.network/tx/';
+        const a = document.createElement('a');
+        a.href = base + txid;
+        a.textContent = txid.slice(0,10) + '…' + txid.slice(-6);
+        a.target = '_blank';
+        a.rel = 'noopener';
+        return a.outerHTML;
+      }
+
+      function render(rec) {
+        setStatusChip(rec.status || 'pending');
+        el.tx.innerHTML = rec.flare_txid ? explorerLink(rec.flare_txid) : '-';
+
+        if (rec.xml_url) {
+          el.xml.href = rec.xml_url.startsWith('/') ? rec.xml_url : new URL(rec.xml_url).pathname;
+          el.xml.classList.remove('hidden');
+        }
+        if (rec.bundle_url) {
+          el.bundle.href = rec.bundle_url.startsWith('/') ? rec.bundle_url : new URL(rec.bundle_url).pathname;
+          el.bundle.classList.remove('hidden');
+        }
+        el.open.href = `/receipt/${rid}`;
+      }
+
+      async function fetchReceipt() {
+        const r = await fetch(`/v1/iso/receipts/${rid}`, { cache: 'no-store' });
+        if (!r.ok) throw new Error(await r.text());
+        return r.json();
+      }
+
+      async function init() {
+        if (!rid) {
+          el.status.textContent = 'missing rid';
+          el.status.classList.add('err');
+          return;
+        }
+        try {
+          const rec = await fetchReceipt();
+          render(rec);
+        } catch (e) {
+          el.status.textContent = 'error';
+          el.status.classList.add('err');
+        }
+
+        const es = new EventSource(`/v1/iso/events/${rid}`);
+        es.addEventListener('update', (ev) => {
+          try {
+            const data = JSON.parse(ev.data);
+            render(data);
+          } catch {}
+        });
+        es.onerror = () => {};
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>
