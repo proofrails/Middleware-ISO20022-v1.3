@@ -14,6 +14,6 @@ types-requests==2.32.0.20240914
 
 # Added for anchoring (Python web3 path) and Postgres driver
 web3==6.20.1
-eth-account==0.12.3
+
 eth-utils==4.1.1
 
