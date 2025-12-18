@@ -278,7 +278,7 @@ See also:
 - `DEPLOY-RAILWAY.md` – deploying API + web UI on Railway
 
 External reference:
-- https://deepwiki.com/TheVictorMunoz/ISO20022-Translator-V2
+- [https://deepwiki.com/TheVictorMunoz/ISO20022-Translator](https://deepwiki.com/proofrails/Middleware-ISO20022-v1.3)
 
 ---
 
