@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,8 @@ from web3.contract import Contract  # type: ignore
 from web3.exceptions import ContractLogicError  # type: ignore
 
 from .schemas import ChainMatch
+
+logger = logging.getLogger(__name__)
 
 
 # Environment/config
@@ -167,6 +170,7 @@ def anchor_bundle(bundle_hash_hex: str) -> Tuple[str, int]:
     from_addr = acct.address
 
     bundle_hash32 = _hex32_from_prefixed(bundle_hash_hex)
+    logger.info(f"Anchoring bundle hash: {bundle_hash_hex} from {from_addr}")
 
     # Retry loop for nonce/gas issues
     last_err = None
@@ -175,15 +179,20 @@ def anchor_bundle(bundle_hash_hex: str) -> Tuple[str, int]:
             tx = _build_tx_anchor(w3, contract, from_addr, bundle_hash32)
             signed = acct.sign_transaction(tx)
             tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
+            logger.debug(f"Transaction sent: {tx_hash.hex()}, waiting for confirmation...")
             receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=180)
             if receipt and receipt.get("status", 1) == 1:
+                logger.info(f"Bundle anchored: hash={bundle_hash_hex}, tx={tx_hash.hex()}, block={receipt['blockNumber']}")
                 return tx_hash.hex(), receipt["blockNumber"]
             last_err = RuntimeError("Transaction failed with status != 1")
+            logger.warning(f"Transaction failed with status != 1: {tx_hash.hex()}")
         except Exception as e:
             last_err = e
+            logger.warning(f"Anchoring attempt {attempt + 1}/3 failed: {e}")
             # Small backoff and nonce bump
             time.sleep(1 + attempt)
     if last_err:
+        logger.error(f"Failed to anchor bundle after 3 attempts: {last_err}")
         raise last_err  # propagate last error
     raise RuntimeError("Unknown error anchoring bundle")
 
@@ -200,13 +209,17 @@ def find_anchor(bundle_hash_hex: str) -> ChainMatch:
     """
     try:
         w3, contract = _load_contract()
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Failed to load contract for anchor lookup: {e}")
         return ChainMatch(matches=False)
 
     try:
         bundle_hash32 = _hex32_from_prefixed(bundle_hash_hex)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Invalid bundle hash format: {bundle_hash_hex}, error: {e}")
         return ChainMatch(matches=False)
+    
+    logger.debug(f"Looking up anchor for bundle hash: {bundle_hash_hex}")
 
     latest = w3.eth.block_number
     from_block = max(0, latest - LOOKBACK_BLOCKS)
@@ -245,10 +258,12 @@ def find_anchor(bundle_hash_hex: str) -> ChainMatch:
                     blk = w3.eth.get_block(log["blockNumber"])
                     ts = blk.get("timestamp")
                     anchored_at = datetime.fromtimestamp(ts, tz=timezone.utc) if isinstance(ts, int) else None
+                    logger.info(f"Found anchor: hash={bundle_hash_hex}, tx={tx_hash}, block={log['blockNumber']}")
                     return ChainMatch(matches=True, txid=tx_hash, anchored_at=anchored_at)
             except Exception:
                 continue
 
         end = start - 1
 
+    logger.debug(f"No anchor found for bundle hash: {bundle_hash_hex}")
     return ChainMatch(matches=False)

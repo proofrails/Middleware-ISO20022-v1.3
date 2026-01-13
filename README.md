@@ -176,6 +176,7 @@ Key environment variables (see `.env.example`):
 - `WEB_ORIGIN` – CORS origin for your web UI / frontend (comma-separated if needed). The backend still accepts legacy `STREAMLIT_ORIGIN` for compatibility.
 - `PUBLIC_BASE_URL` – base URL to prefix artifact links in callbacks
 - `ADMIN_TOKEN` / `API_KEY_HASH_SECRET` – used for admin API key management
+- `LOG_LEVEL` – logging level (DEBUG, INFO, WARNING, ERROR). Default: INFO
 
 ---
 

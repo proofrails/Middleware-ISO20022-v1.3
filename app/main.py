@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from uuid import uuid4
 from datetime import datetime, date, timedelta
 from pathlib import Path
@@ -19,6 +20,15 @@ import hashlib
 import base64
 from fastapi import Request
 from typing import Optional as _Opt
+
+# Configure logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 # --- API key helpers ---
 API_KEY_HASH_SECRET = os.getenv("API_KEY_HASH_SECRET", "")
@@ -191,6 +201,8 @@ def record_tip(
 
     # Background processing: XML -> bundle -> sign -> anchor -> update DB
     background_tasks.add_task(_process_receipt, str(rid), payload.callback_url)
+    
+    logger.info(f"Receipt created: id={rid}, reference={payload.reference}, project={project_id}")
 
     return schemas.RecordTipResponse(receipt_id=str(rid), status="pending")
 
@@ -201,7 +213,10 @@ def _process_receipt(receipt_id: str, callback_url: Optional[str] = None):
     try:
         rec: Optional[models.Receipt] = session.get(models.Receipt, receipt_id)
         if not rec:
+            logger.warning(f"Receipt not found for processing: {receipt_id}")
             return
+        
+        logger.info(f"Processing receipt: id={receipt_id}, reference={rec.reference}")
 
         # Build a dict view for ISO and bundle metadata
         receipt_dict = {
@@ -218,10 +233,13 @@ def _process_receipt(receipt_id: str, callback_url: Optional[str] = None):
         }
 
         # 1) Generate ISO XML (validate when XSD is present)
+        logger.debug(f"Generating ISO XML for receipt: {receipt_id}")
         xml_bytes = iso.generate_pain001(receipt_dict)
 
         # 2) Create deterministic bundle and sign
+        logger.debug(f"Creating bundle for receipt: {receipt_id}")
         zip_path, bundle_hash = bundle.create_bundle(receipt_dict, xml_bytes)
+        logger.info(f"Bundle created: id={receipt_id}, hash={bundle_hash}")
 
         # 3) Anchor on Flare (Coston2) if available
         rec.bundle_hash = bundle_hash
@@ -229,12 +247,15 @@ def _process_receipt(receipt_id: str, callback_url: Optional[str] = None):
         # Try Python web3 first, then Node fallback
         try:
             from . import anchor  # type: ignore
+            logger.info(f"Anchoring bundle on-chain: hash={bundle_hash}")
             txid, block_number = anchor.anchor_bundle(bundle_hash)
             rec.flare_txid = txid
             rec.status = "anchored"
             rec.anchored_at = datetime.utcnow()
             anchored = True
-        except Exception:
+            logger.info(f"Bundle anchored successfully: id={receipt_id}, tx={txid}, block={block_number}")
+        except Exception as e:
+            logger.warning(f"Python anchor failed, trying Node fallback: {e}")
             try:
                 from . import anchor_node  # type: ignore
                 txid, block_number = anchor_node.anchor_bundle(bundle_hash)
@@ -242,8 +263,10 @@ def _process_receipt(receipt_id: str, callback_url: Optional[str] = None):
                 rec.status = "anchored"
                 rec.anchored_at = datetime.utcnow()
                 anchored = True
-            except Exception:
+                logger.info(f"Bundle anchored via Node: id={receipt_id}, tx={txid}, block={block_number}")
+            except Exception as e2:
                 # Anchoring unavailable/failed; keep artifacts and mark failed
+                logger.error(f"Anchoring failed for receipt {receipt_id}: {e2}")
                 rec.status = "failed"
 
         # 4) Persist artifact paths
@@ -326,12 +349,14 @@ def _process_receipt(receipt_id: str, callback_url: Optional[str] = None):
                     cb_payload["xml_url"] = f"{base_url}{cb_payload['xml_url']}"
                     cb_payload["bundle_url"] = f"{base_url}{cb_payload['bundle_url']}"
                 # Fire-and-forget callback
+                logger.debug(f"Sending callback to {callback_url} for receipt {rec.id}")
                 requests.post(callback_url, json=cb_payload, timeout=15)
-            except Exception:
+                logger.debug(f"Callback sent successfully for receipt {rec.id}")
+            except Exception as e:
                 # Do not fail background task on callback errors
-                pass
-    except Exception:
-        # Best-effort error handling; upgrade to structured logging in future
+                logger.warning(f"Callback failed for receipt {rec.id}: {e}")
+    except Exception as e:
+        logger.error(f"Error processing receipt {receipt_id}: {e}", exc_info=True)
         if rec:
             rec.status = "failed"
             session.commit()
